@@ -1,10 +1,10 @@
-name: Run Bot for 1 Hour Daily
+name: Run Bot Daily at 07:00 IST (20 Minutes)
 
 on:
   schedule:
-    # Run at 00:00 UTC every day (you can change this cron expression)
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Allow manual trigger
+    # Run at 07:00 IST (UTC+05:30) every day = 01:30 UTC
+    - cron: '30 1 * * *'
+  workflow_dispatch:
 
 jobs:
   run-bot:
@@ -23,8 +23,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       
-      - name: Run bot for 1 hour
+      - name: Run bot for 20 minutes
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
-          timeout 3600 python main.py || true
+          timeout 1200 python main.py || true
