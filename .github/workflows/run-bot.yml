@@ -27,5 +27,4 @@ jobs:
         env:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
         run: |
-          cd VYX
           timeout 3600 python main.py || true
