@@ -1,0 +1,32 @@
+name: Run Bot for 1 Hour Daily
+
+on:
+  schedule:
+    # Run at 00:00 UTC every day (you can change this cron expression)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.13'
+      
+      - name: Install dependencies
+        run: |
+          cd VYX
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Run bot for 1 hour
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: |
+          cd VYX
+          timeout 3600 python main.py || true
