@@ -20,9 +20,6 @@ from telegram import Bot
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
 
-# ──────────────────────────────────────────────────────────────
-# Configuration
-# ──────────────────────────────────────────────────────────────
 load_dotenv()
 
 BOT_TOKEN       = os.getenv("BOT_TOKEN", "")
@@ -40,11 +37,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ──────────────────────────────────────────────────────────────
-# Curated Sources  (cybersecurity & software supply chain focused)
-# ──────────────────────────────────────────────────────────────
 SOURCES = [
-    # ── Cybersecurity ────────────────────────────────────────────
     ("Krebs on Security",   "https://krebsonsecurity.com/feed/",                        "🔐"),
     ("The Hacker News",     "https://feeds.feedburner.com/TheHackersNews",              "🛡️"),
     ("Bleeping Computer",   "https://www.bleepingcomputer.com/feed/",                   "💻"),
@@ -57,16 +50,12 @@ SOURCES = [
     ("ArXiv CS.CR",         "http://arxiv.org/rss/cs.CR",                              "📄"),
     ("HackerNews",          "https://thehackernews.com/",                              "X"),
 
-    # ── Supply Chain Security ────────────────────────────────────
     ("Hacker News",         "https://news.ycombinator.com/rss",                         "🔗"),
     ("Ars Technica Tech",   "https://feeds.arstechnica.com/arstechnica/technology-lab", "🔬"),
     ("Lobsters",            "https://lobste.rs/rss",                                    "🦞"),
 
 ]
 
-# ──────────────────────────────────────────────────────────────
-# Relevance Scoring
-# ──────────────────────────────────────────────────────────────
 
 # Each entry: (compiled_regex, score_points, category_tag)
 _KEYWORD_RULES: list[tuple[re.Pattern, int, str]] = []
@@ -74,7 +63,7 @@ _KEYWORD_RULES: list[tuple[re.Pattern, int, str]] = []
 def _build_rules() -> None:
     """Compile keyword rules once at startup."""
     raw = [
-        # ── High-value cybersecurity terms ──────────────────────────
+        # High-value cybersecurity terms
         (r"\b(zero[- ]?day|0day|cve-\d{4})\b",                    4, "🔐 Security"),
         (r"\b(ransomware|malware|exploit|vulnerability|patch)\b",  3, "🔐 Security"),
         (r"\b(data breach|phishing|apt|threat actor|backdoor)\b",  3, "🔐 Security"),
@@ -86,7 +75,7 @@ def _build_rules() -> None:
         (r"\b(authentication|authorization|access.control|iam)\b", 2, "🔐 Security"),
         (r"\b(intrusion|incident.response|forensic|soc|csirt)\b",  2, "🔐 Security"),
 
-        # ── Software supply chain security ───────────────────────────
+        # Software supply chain security
         (r"\b(supply[- ]?chain|software supply chain|dependency)\b", 4, "🔗 Supply Chain"),
         (r"\b(sbom|software bill of materials|dependency tree)\b",   4, "🔗 Supply Chain"),
         (r"\b(npm|pypi|rubygems|maven|nuget|package.manager)\b",     3, "🔗 Supply Chain"),
@@ -175,10 +164,6 @@ def is_within_age_limit(published_str: str) -> bool:
         return True  # If we can't parse date, don't filter it out
 
 
-# ──────────────────────────────────────────────────────────────
-# Sent-article Persistence
-# ──────────────────────────────────────────────────────────────
-
 def load_sent() -> set:
     if SENT_DB_PATH.exists():
         try:
@@ -196,10 +181,6 @@ def save_sent(sent: set) -> None:
 def article_id(url: str) -> str:
     return hashlib.sha256(url.encode()).hexdigest()[:16]
 
-
-# ──────────────────────────────────────────────────────────────
-# Scraping
-# ──────────────────────────────────────────────────────────────
 
 def scrape_feed(name: str, url: str, emoji: str) -> list[dict]:
     """Parse a single RSS feed; score and return article dicts."""
@@ -261,11 +242,6 @@ def scrape_all() -> list[dict]:
     )
     return relevant
 
-
-# ──────────────────────────────────────────────────────────────
-# Telegram Formatting
-# ──────────────────────────────────────────────────────────────
-
 def format_message(article: dict) -> str:
     """Build an intelligently formatted Telegram message (HTML mode)."""
     emoji    = article["emoji"]
@@ -292,10 +268,6 @@ def format_message(article: dict) -> str:
     )
     return msg
 
-
-# ──────────────────────────────────────────────────────────────
-# Main Loop
-# ──────────────────────────────────────────────────────────────
 
 async def run_once(bot: Bot, sent: set) -> set:
     """One scrape-and-send cycle. Returns the updated sent set."""
