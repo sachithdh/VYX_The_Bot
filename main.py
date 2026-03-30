@@ -1,6 +1,6 @@
 """
 Intelligent News Bot → Telegram
-Scrapes cybersecurity, AI/ML, and computer-science articles from curated
+Scrapes cybersecurity and software supply chain security articles from curated
 sources, scores each item for relevance, and forwards only the most
 interesting ones to Telegram — ranked by score, not by arrival order.
 """
@@ -31,6 +31,7 @@ MAX_PER_RUN     = int(os.getenv("MAX_PER_RUN", "10"))        # max articles per 
 MIN_SCORE       = int(os.getenv("MIN_SCORE", "2"))           # minimum relevance score to send
 SENT_DB_PATH    = Path(os.getenv("SENT_DB", "sent_articles.json"))
 RECENCY_HOURS   = int(os.getenv("RECENCY_HOURS", "24"))      # prefer articles within this window
+MAX_AGE_HOURS   = int(os.getenv("MAX_AGE_HOURS", "24"))      # hard cutoff: ignore articles older than this
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,7 +41,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 # ──────────────────────────────────────────────────────────────
-# Curated Sources  (only cyber / AI / CS focused)
+# Curated Sources  (cybersecurity & software supply chain focused)
 # ──────────────────────────────────────────────────────────────
 SOURCES = [
     # ── Cybersecurity ────────────────────────────────────────────
@@ -53,27 +54,14 @@ SOURCES = [
     ("Schneier on Security","https://www.schneier.com/feed/atom/",                      "🔐"),
     ("r/netsec",            "https://www.reddit.com/r/netsec/.rss",                     "🛡️"),
     ("r/cybersecurity",     "https://www.reddit.com/r/cybersecurity/.rss",              "🔐"),
-
-    # ── AI / ML ──────────────────────────────────────────────────
-    ("MIT Tech Review AI",  "https://www.technologyreview.com/topic/artificial-intelligence/feed/", "🤖"),
-    ("Google AI Blog",      "https://blog.research.google/feeds/posts/default",         "🤖"),
-    ("OpenAI Blog",         "https://openai.com/news/rss.xml",                          "🤖"),
-    ("DeepMind Blog",       "https://deepmind.google/blog/rss.xml",                     "🤖"),
-    ("Hugging Face Blog",   "https://huggingface.co/blog/feed.xml",                     "🤖"),
-    ("r/MachineLearning",   "https://www.reddit.com/r/MachineLearning/.rss",            "🤖"),
-    ("r/artificial",        "https://www.reddit.com/r/artificial/.rss",                 "🤖"),
-    ("ArXiv CS.AI",         "http://arxiv.org/rss/cs.AI",                              "📄"),
-    ("ArXiv CS.LG",         "http://arxiv.org/rss/cs.LG",                              "📄"),
     ("ArXiv CS.CR",         "http://arxiv.org/rss/cs.CR",                              "📄"),
+    ("HackerNews",          "https://thehackernews.com/",                              "X"),
 
-    # ── Computer Science / Software Engineering ───────────────────
-    ("Hacker News",         "https://news.ycombinator.com/rss",                         "🟠"),
-    ("ACM TechNews",        "https://technews.acm.org/archives.cfm?fo=rss",             "🎓"),
+    # ── Supply Chain Security ────────────────────────────────────
+    ("Hacker News",         "https://news.ycombinator.com/rss",                         "🔗"),
     ("Ars Technica Tech",   "https://feeds.arstechnica.com/arstechnica/technology-lab", "🔬"),
     ("Lobsters",            "https://lobste.rs/rss",                                    "🦞"),
-    ("r/compsci",           "https://www.reddit.com/r/compsci/.rss",                    "💻"),
-    ("r/programming",       "https://www.reddit.com/r/programming/.rss",                "💻"),
-    ("Quanta Magazine",     "https://api.quantamagazine.org/feed/",                     "✨"),
+
 ]
 
 # ──────────────────────────────────────────────────────────────
@@ -95,25 +83,27 @@ def _build_rules() -> None:
         (r"\b(firewall|ids|ips|siem|soar|endpoint|edr|xdr)\b",     2, "🔐 Security"),
         (r"\b(encryption|cryptography|tls|ssl|pki|certificate)\b", 2, "🔐 Security"),
         (r"\b(botnet|ddos|c2|command.and.control|stealer)\b",      3, "🔐 Security"),
+        (r"\b(authentication|authorization|access.control|iam)\b", 2, "🔐 Security"),
+        (r"\b(intrusion|incident.response|forensic|soc|csirt)\b",  2, "🔐 Security"),
 
-        # ── High-value AI/ML terms ───────────────────────────────────
-        (r"\b(large language model|llm|gpt|chatgpt|gemini|claude)\b", 4, "🤖 AI/ML"),
-        (r"\b(neural network|deep learning|machine learning|transformer)\b", 3, "🤖 AI/ML"),
-        (r"\b(reinforcement learning|diffusion model|generative ai|gen[- ]?ai)\b", 3, "🤖 AI/ML"),
-        (r"\b(artificial intelligence|computer vision|nlp|natural language)\b", 2, "🤖 AI/ML"),
-        (r"\b(benchmark|fine[- ]?tun|prompt engineer|rag|retrieval)\b", 2, "🤖 AI/ML"),
-        (r"\b(openai|anthropic|deepmind|mistral|stability ai|hugging face)\b", 3, "🤖 AI/ML"),
-        (r"\b(autonomous agent|ai safety|alignment|hallucination)\b", 3, "🤖 AI/ML"),
-        (r"\b(multimodal|embedding|vector database|semantic search)\b", 2, "🤖 AI/ML"),
-
-        # ── High-value CS / software terms ───────────────────────────
-        (r"\b(algorithm|data structure|complexity|proof|theorem)\b", 2, "💻 CS"),
-        (r"\b(compiler|operating system|kernel|memory.safe|rust|zig)\b", 2, "💻 CS"),
-        (r"\b(distributed system|consensus|blockchain|p2p|protocol)\b", 2, "💻 CS"),
-        (r"\b(open[- ]?source|github|arxiv|paper|research|preprint)\b", 1, "💻 CS"),
-        (r"\b(programming language|type system|formal verification)\b", 2, "💻 CS"),
-        (r"\b(cloud|kubernetes|container|devops|infrastructure)\b",    1, "💻 CS"),
-        (r"\b(quantum computing|hardware|chip|semiconductor|cpu|gpu)\b", 2, "💻 CS"),
+        # ── Software supply chain security ───────────────────────────
+        (r"\b(supply[- ]?chain|software supply chain|dependency)\b", 4, "🔗 Supply Chain"),
+        (r"\b(sbom|software bill of materials|dependency tree)\b",   4, "🔗 Supply Chain"),
+        (r"\b(npm|pypi|rubygems|maven|nuget|package.manager)\b",     3, "🔗 Supply Chain"),
+        (r"\b(dependency.confusion|typosquatting|package.hijack)\b", 4, "🔗 Supply Chain"),
+        (r"\b(left[- ]?pad|event[- ]?stream|colors\.js|ua-parser)\b", 3, "🔗 Supply Chain"),
+        (r"\b(codecov|solarwinds|kaseya|log4j|log4shell)\b",         4, "🔗 Supply Chain"),
+        (r"\b(open[- ]?source.security|oss|maintainer|contributor)\b", 2, "🔗 Supply Chain"),
+        (r"\b(code.sign|signature.verif|integrity.check|checksum)\b", 3, "🔗 Supply Chain"),
+        (r"\b(build.pipeline|ci[/]cd|devops.security|devsecops)\b",  3, "🔗 Supply Chain"),
+        (r"\b(container.security|docker|image.scanning|artifact)\b",  2, "🔗 Supply Chain"),
+        (r"\b(github.security|gitlab|repository.security|source.code)\b", 2, "🔗 Supply Chain"),
+        (r"\b(third[- ]?party|vendor.risk|upstream|downstream)\b",    2, "🔗 Supply Chain"),
+        (r"\b(malicious.package|backdoor.package|trojan.package)\b",  4, "🔗 Supply Chain"),
+        (r"\b(npm.audit|pip.audit|dependency.check|snyk|sonatype)\b", 2, "🔗 Supply Chain"),
+        (r"\b(slsa|in[- ]?toto|sigstore|provenance|attestation)\b",   3, "🔗 Supply Chain"),
+        (r"\b(secure[- ]?software|ssdf|nist|cisa|critical.software)\b", 2, "🔗 Supply Chain"),
+        (r"\b(license.compliance|license.risk|gpl|copyleft)\b",       1, "🔗 Supply Chain"),
     ]
     for pattern, score, category in raw:
         _KEYWORD_RULES.append((re.compile(pattern, re.IGNORECASE), score, category))
@@ -123,7 +113,7 @@ _build_rules()
 
 def score_article(title: str, summary: str) -> tuple[int, str]:
     """
-    Score an article's relevance to cybersecurity / AI-ML / CS topics.
+    Score an article's relevance to cybersecurity and software supply chain topics.
     Returns (total_score, dominant_category_tag).
     Title matches are worth 1.5× (rounded).
     """
@@ -141,7 +131,7 @@ def score_article(title: str, summary: str) -> tuple[int, str]:
             total += contribution
             category_scores[category] = category_scores.get(category, 0) + contribution
 
-    dominant = max(category_scores, key=category_scores.get) if category_scores else "💻 CS"
+    dominant = max(category_scores, key=category_scores.get) if category_scores else "🔐 Security"
     return int(round(total)), dominant
 
 
@@ -165,6 +155,24 @@ def recency_bonus(published_str: str) -> int:
     except Exception:
         pass
     return 0
+
+
+def is_within_age_limit(published_str: str) -> bool:
+    """
+    Return True if article is within MAX_AGE_HOURS, False otherwise.
+    Articles with no publish date are considered valid (True).
+    """
+    if not published_str:
+        return True  # Allow articles without dates
+    try:
+        from email.utils import parsedate_to_datetime
+        pub = parsedate_to_datetime(published_str)
+        if pub.tzinfo is None:
+            pub = pub.replace(tzinfo=timezone.utc)
+        age = datetime.now(timezone.utc) - pub
+        return age <= timedelta(hours=MAX_AGE_HOURS)
+    except Exception:
+        return True  # If we can't parse date, don't filter it out
 
 
 # ──────────────────────────────────────────────────────────────
@@ -204,12 +212,16 @@ def scrape_feed(name: str, url: str, emoji: str) -> list[dict]:
             summary   = getattr(entry, "summary", "").strip()
             published = getattr(entry, "published", "")
 
+            if not link:
+                continue
+
+            # Filter out articles older than MAX_AGE_HOURS
+            if not is_within_age_limit(published):
+                continue
+
             # Strip HTML tags from summary
             summary = re.sub(r"<[^>]+>", "", summary)
             summary = summary[:400] + ("…" if len(summary) > 400 else "")
-
-            if not link:
-                continue
 
             score, category = score_article(title, summary)
             score += recency_bonus(published)
@@ -340,6 +352,7 @@ async def main() -> None:
     log.info("   Max per run    : %d", MAX_PER_RUN)
     log.info("   Min score      : %d", MIN_SCORE)
     log.info("   Recency window : %dh", RECENCY_HOURS)
+    log.info("   Max age filter : %dh", MAX_AGE_HOURS)
     log.info("   Sources        : %d", len(SOURCES))
 
     await run_once(bot, sent)
