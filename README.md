@@ -2,6 +2,8 @@
 
 A Telegram bot that collects cybersecurity and software supply chain news from curated RSS feeds, scores each article by relevance, and sends the most important updates to a Telegram chat.
 
+(Developed for my personal use. Runs on GitHub Actions every day at 7 AM and sends me important news/articles from the past 24 hours :))
+
 ## Features
 
 - Pulls news from multiple trusted security and tech sources
