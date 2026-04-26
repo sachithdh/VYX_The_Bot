@@ -28,4 +28,4 @@ jobs:
           BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
         run: |
-          timeout 1200 python main.py || true
+          timeout 180 python main.py || true
